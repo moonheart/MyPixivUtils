@@ -1,12 +1,30 @@
 ﻿using System;
+using System.IO;
+using Microsoft.Extensions.Configuration;
 
-namespace DiscoveryAndBookmark
+namespace MyPixivUtils.DiscoveryAndBookmark
 {
-    class Program
+    public class Program
     {
+        public static IConfiguration Configuration { get; set; }
         static void Main(string[] args)
         {
-            Console.WriteLine("Hello World!");
+            BuildConfiguration();
+            using (var pixivBookmarkTool = new PixivBookmarkTool())
+            {
+                pixivBookmarkTool.Start();
+                Console.ReadKey();
+                Console.WriteLine("exiting...");
+            }
+        }
+
+        static void BuildConfiguration()
+        {
+            var builder = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json");
+
+            Configuration = builder.Build();
         }
     }
 }
