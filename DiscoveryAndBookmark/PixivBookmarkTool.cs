@@ -22,6 +22,7 @@ namespace MyPixivUtils.DiscoveryAndBookmark
         private Uri _pixiv = new Uri("https://www.pixiv.net/");
         private bool _disposing;
         private bool _running;
+        private string[] _badTags;
         public PixivBookmarkTool()
         {
             string cookieText = LocalSetting.Instance["cookie"] ?? "";
@@ -47,6 +48,7 @@ namespace MyPixivUtils.DiscoveryAndBookmark
                 Timeout = TimeSpan.FromSeconds(10)
             };
             _container = httpClientHandler.CookieContainer;
+            _badTags = LocalSetting.Instance["badtag", typeof(string[])];
         }
 
         public Task Start(params string[] illustids)
@@ -91,11 +93,11 @@ namespace MyPixivUtils.DiscoveryAndBookmark
                         Console.Write($"[{index + 1}/{succeed}/{skiped}/{failed}/{ids.Count}] processing: {id}");
                         var detailUri = new Uri($"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={id}");
                         var info = GetIllustInfo(id, HttpGetHtml(detailUri, "https://www.pixiv.net/discovery"));
-                        Console.Write($", bookmark:{info.BookmarkCount}, page: {info.pagecount}, tags:{""}");
-                        var blackTags = new[] { "動物", "食べ物", "建物", "ご飯", "鳥", "猫", "犬" };
-                        if (info.tags.Intersect(blackTags).Any())
+                        Console.Write($", bookmark:{info.BookmarkCount}, page: {info.pagecount}");
+                        var badtags = info.tags.Intersect(_badTags).ToList();
+                        if (badtags.Any())
                         {
-                            Console.Write(", skiped bad tag");
+                            Console.Write($", skiped {string.Join(",", badtags)}");
                         }
                         else if (info.BookmarkCount > _minCount && info.pagecount < 4)
                         {
@@ -146,7 +148,7 @@ namespace MyPixivUtils.DiscoveryAndBookmark
             var ids = Regex.Matches(html, @"<li id=""il(?<id>\d+)""").Cast<Match>().Select(x => x.Groups["id"].Value).Distinct();
             illustInfo.ids = ids.Where(d => d != id).ToArray();
             illustInfo.pagecount = cq[".img-box .page-count"].Text().ToIntNullable() ?? 1;
-            illustInfo.tags = cq[".tag"].Selection.Select(x => x.TextContent.Replace("* ", "")).ToArray();
+            illustInfo.tags = cq[".tag"].Selection.Select(x => x.TextContent.Replace("* ", "")).ToArray();
             return illustInfo;
         }
 
