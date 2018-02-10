@@ -43,14 +43,14 @@ namespace MyPixivUtils.Shared
             }
         }
 
-        public dynamic this[string key, Func<dynamic, dynamic> func = null]
+        public dynamic this[string key, Type type=null]
         {
             get
             {
                 var x = _settings[key];
-                if (x is JArray y)
+                if (type != null)
                 {
-                    return func == null ? y.ToArray() : y.Select(func).ToArray();
+                    return x.ToObject(type);
                 }
                 return x;
             }
