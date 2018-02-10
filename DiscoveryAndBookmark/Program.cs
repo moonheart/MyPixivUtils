@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using Microsoft.Extensions.Configuration;
+using MyPixivUtils.Shared;
 
 namespace MyPixivUtils.DiscoveryAndBookmark
 {
@@ -10,9 +11,9 @@ namespace MyPixivUtils.DiscoveryAndBookmark
         static void Main(string[] args)
         {
             BuildConfiguration();
-            using (var pixivBookmarkTool = new PixivBookmarkTool())
+            using (var pixivBookmarkTool = new PixivClient())
             {
-                pixivBookmarkTool.Start();
+                pixivBookmarkTool.RunSearchList("極上の女体");
                 Console.ReadKey();
                 Console.WriteLine("exiting...");
             }
