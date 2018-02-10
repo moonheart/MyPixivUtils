@@ -8,7 +8,6 @@ namespace MyPixivUtils.Shared
     {
         public string Id { get; set; }
         public int BookmarkCount { get; set; }
-        public string tt { get; set; }
         public bool IsBookmarked { get; set; }
         public string[] ids { get; set; }
         public int pagecount { get; set; }
