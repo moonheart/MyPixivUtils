@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using CommandLine;
 using CsQuery;
 using Newtonsoft.Json.Linq;
 
@@ -17,13 +18,25 @@ namespace MyPixivUtils.Shared
 
         public class Settings
         {
-            public static int MinCount = 5000;
-            public static int MaxIllustPageCount = 3;
+            [Option("mincount", Default = 5000, HelpText = "最小收藏量")]
+            public int MinCount { get; set; }
 
-            public static Func<string, Uri> DetailUriBuilder = id =>
-                new Uri($"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={id}");
+            [Option("maxpage",Default = 3, HelpText = "最大作品页数")]
+            public int MaxIllustPageCount { get; set; }
 
-            public static bool R18InPrivate = true;
+            [Option("r18",Default = true, HelpText = "R18作品收藏到私人")]
+            public bool R18InPrivate { get; set; }
+
+            [Option("tag",Default = false, HelpText = "启用标签过滤")]
+            public bool EnableTagFilter { get; set; }
+
+            [Option("startpage",Default = 1, HelpText = "开始页码")]
+            public int StartPage { get; set; }
+
+            [Option("search",Default = "", HelpText = "搜索词")]
+            public string SearchWord { get; set; }
+
+
         }
         public HttpClient _HttpClient;
         //private ConcurrentQueue<string> _illustQueue = new ConcurrentQueue<string>();
@@ -33,8 +46,13 @@ namespace MyPixivUtils.Shared
         private bool _running;
         private string[] _badTags;
         private string _postKey;
-        public PixivClient()
+        public Func<string, Uri> DetailUriBuilder = id =>
+            new Uri($"https://www.pixiv.net/member_illust.php?mode=medium&illust_id={id}");
+
+        private Settings _settings;
+        public PixivClient(Settings settings)
         {
+            _settings = settings;
             string cookieText = LocalSetting.Instance["cookie"] ?? "";
 
             var httpClientHandler = new HttpClientHandler();
@@ -89,7 +107,7 @@ namespace MyPixivUtils.Shared
                 if (_disposing) break;
                 //Thread.Sleep(random.Next(300, 1000));
                 Console.Write($"processing: {id}");
-                var info = GetIllustInfo(id, HttpGetHtml(Settings.DetailUriBuilder(id), "https://www.pixiv.net/discovery"));
+                var info = GetIllustInfo(id, HttpGetHtml(DetailUriBuilder(id), "https://www.pixiv.net/discovery"));
                 ProcessIllust(info);
                 Console.Write("\r\n");
             }
@@ -97,16 +115,20 @@ namespace MyPixivUtils.Shared
 
         private void ProcessIllust(IllustInfo info)
         {
-            Console.Write($", bookmark:{info.BookmarkCount}, page: {info.pagecount}");
+            Console.Write($", bookmark: {info.IsBookmarked}:{info.BookmarkCount}, page: {info.pagecount}");
             var badtags = info.tags.Intersect(_badTags).ToList();
-            if (badtags.Any())
+            if (_settings.EnableTagFilter && badtags.Any())
             {
                 Console.Write($", skiped {string.Join(",", badtags)}");
             }
-            else if (info.BookmarkCount >= Settings.MinCount && info.pagecount <= Settings.MaxIllustPageCount)
+            else if (info.IsBookmarked)
+            {
+                Console.Write($", skiped bookmarked.");
+            }
+            else if (info.BookmarkCount >= _settings.MinCount && info.pagecount <= _settings.MaxIllustPageCount)
             {
                 int restrict = 0;
-                if (Settings.R18InPrivate && Regex.IsMatch(string.Join(",", info.tags), @"r(-)?18", RegexOptions.IgnoreCase))
+                if (_settings.R18InPrivate && Regex.IsMatch(string.Join(",", info.tags), @"r(-)?18", RegexOptions.IgnoreCase))
                 {
                     restrict = 1;
                 }
@@ -140,9 +162,11 @@ namespace MyPixivUtils.Shared
         {
             return Run(() =>
             {
-                int page = 1;
+                int page = _settings.StartPage;
+                Console.WriteLine($"start! start page: {page}");
                 while (!_disposing)
                 {
+                    Console.WriteLine($"page: {page}");
                     var html = HttpGetReturnJson(
                         new Uri(
                             $"https://www.pixiv.net/touch/ajax_api/search_api.php?endpoint=search&mode=search_illust&word={WebUtility.UrlEncode(searchWord)}&order=&p={page}&type=&scd=&ecd=&circle_list=0&s_mode=s_tag&blt=&bgt=&adult_mode="),
@@ -153,6 +177,8 @@ namespace MyPixivUtils.Shared
                     if (ids.Length < 12) break;
                     page++;
                 }
+
+                Console.WriteLine("finished");
             });
         }
 
@@ -162,7 +188,7 @@ namespace MyPixivUtils.Shared
                 () => new StringContent(
                     $"mode=add_bookmark_illust&tt={_postKey}&id={id}&restrict={restrict}&tag=&comment=",
                     Encoding.UTF8, "application/x-www-form-urlencoded"),
-                Settings.DetailUriBuilder(id).ToString());
+                DetailUriBuilder(id).ToString());
             try
             {
                 return JObject.Parse(json)["isSucceed"].ToObject<bool>();
@@ -179,8 +205,7 @@ namespace MyPixivUtils.Shared
             var illustInfo = new IllustInfo();
             illustInfo.Id = id;
             illustInfo.BookmarkCount = cq[".bookmark-count"].Eq(0).Text().ToInt();
-            //var activeMark = cq["#bookmark img.active"].Attr("src");
-            //illustInfo.IsBookmarked = activeMark.Contains("button-bookmark-active");
+            illustInfo.IsBookmarked = cq["span.button.btn-like.done"].Length > 0;
             var ids = Regex.Matches(html, @"<li id=""il(?<id>\d+)""").Cast<Match>().Select(x => x.Groups["id"].Value).Distinct();
             illustInfo.ids = ids.Where(d => d != id).ToArray();
             illustInfo.pagecount = cq[".img-box .page-count"].Text().ToIntNullable() ?? 1;
